@@ -1,100 +1,106 @@
-# FF11 GearSwap - PUP.lua (からくり士用 自動着替えスクリプト)
+# FF11 GearSwap - PUP.lua (Puppetmaster / からくり士)
 
-FF11（ファイナルファンタジーXI）の Windower アドオン「GearSwap（Mote-libsベース）」向けからくり士（PUP）用ユーザー定義ファイルです。
+A custom **GearSwap (Mote-libs based)** user script for Puppetmaster (PUP) in Final Fantasy XI (FFXI).  
+FF11の Windower アドオン「GearSwap（Mote-libsベース）」向けからくり士用自動着替えスクリプトです。
+
+Designed to handle **Strobe (Provoke) / Flashbulb enmity pre-swapping** and **TP WeaponSkill pre-swapping** with precise timing, attachment detection, and real-time timer tracking.  
 盾マトン運用時の**ストロボ（挑発）/ フラッシュバルブの敵対心装備事前換装**、および**TP蓄積時のWS事前換装**を正確かつスムーズに制御します。
 
 ---
 
-## 🚀 主な機能と特長
+## 🚀 Key Features / 主な機能と特長
 
-- **アタッチメント装着の自動検知**
-  - オートマトンに「ストロボ（I/II）」または「フラッシュバルブ」が装着されている場合のみ事前着替えロジックが作動します。
-  - 射撃マトンや魔法マトン等、該当アタッチメント未装着時には不要な着替えを一切行いません。
+1. **Automatic Attachment Detection / アタッチメント自動判定**
+   - Pre-swapping logic triggers **only when Strobe (I/II) or Flashbulb attachments are equipped**.
+   - No unnecessary gear swaps when using Sharpshot (Ranged) or Mage frames without enmity attachments.
+   - オートマトンに「ストロボ（I/II）」または「フラッシュバルブ」が装着されている場合のみ事前着替えが作動します（未装着時は不要な着替えを行いません）。
 
-- **リアルタイム・タイマー管理（引き戻し動作対応）**
-  - 挑発（30秒）およびフラッシュバルブ（45秒）のリキャストを地球時間で独立管理。
-  - 戦闘中にマトンを一時的に手元へ引き戻す（Deploy/Retreat）立ち回りを行っても、裏で正確に秒数を保持・計算し続けます。
+2. **Real-Time Independent Cooldown Tracking (Deploy/Retreat Support) / リアルタイムタイマー管理（引き戻し動作対応）**
+   - Tracks **Strobe (30s)** and **Flashbulb (45s)** recasts independently using real-world time.
+   - Retains accurate cooldowns even when disengaging or pulling the Automaton back (`Deploy` / `Retreat` repositioning).
+   - 挑発（30秒）・フラッシュバルブ（45秒）のリキャストを地球時間で独立管理。戦闘中にマトンを手元へ引き戻しても（Deploy/Retreat）、裏で正確に秒数を計算し続けます。
 
-- **ジャストタイミング敵対心事前換装（リキャスト2秒前）**
-  - 火マニューバ点灯時の「挑発」、光マニューバ点灯時の「フラッシュバルブ」の発動2秒前に自動で敵対心装備（`sets.midcast.Pet['Provoke']` / `['Flashbulb']`）へ差し替わります。
-  - アビリティ発動完了（ログ・パケット検知）の瞬間に即座に通常/抜刀装備へ復帰します。
-  - マトンAIの行動タイムラグ（約4～5秒）に対応した安全保持ロジック（10秒）を搭載。
+3. **Precise Enmity Pre-Swapping (2s Before Recast) / 敵対心事前換装（2秒前換装）**
+   - Automatically equips Enmity gear (`sets.midcast.Pet['Provoke']` / `['Flashbulb']`) **2 seconds before** Strobe (Fire Maneuver active) or Flashbulb (Light Maneuver active).
+   - Instantly reverts to normal/engaged gear upon action completion (packet/log detection).
+   - Includes a 10s safety reset fallback to account for Automaton AI decision latency (4–5s lag).
+   - 火マニューバ点灯時の「挑発」、光マニューバ点灯時の「フラッシュバルブ」の発動2秒前に自動で敵対心装備へ差し替わります。マトンAIの行動ラグ（4～5秒）に対応した10秒安全制御を搭載。
 
-- **TP930以上でのWS事前着替えと優先度制御**
-  - マトンのTPが930に達した時点でWS用装備（`sets.midcast.Pet.WeaponSkill`）へ事前に移行します。
-  - **優先度制御**: TPが930以上溜まっている状態でも、挑発・フラッシュバルブのリキャストが来た場合は**アビリティ（敵対装備）を最優先**して着用します。
+4. **TP >= 930 WeaponSkill Pre-Swapping & Priority Control / TP930以上でのWS事前換装と優先度制御**
+   - Automatically pre-swaps to Automaton WS gear (`sets.midcast.Pet.WeaponSkill`) once Automaton TP reaches **930 or higher**.
+   - **Priority Override**: If Strobe or Flashbulb becomes ready while TP is >= 930, **Enmity gear takes absolute priority** over WS gear so Provoke is never missed.
+   - マトンのTPが930に達した時点でWS用装備へ移行します。TPが930以上溜まっていても、挑発のリキャストが来た場合は**アビリティ（敵対装備）を最優先**して着用します。
 
-- **初回交戦時（リキャスト0秒時）の即時着替え**
-  - 火/光マニューバが入った状態で敵にマトンをぶつけた最初の1発目から、逃さず敵対心装備に着替えてアビリティを発動します。
-
----
-
-## 📁 必須ディレクトリ構成 & 前提条件
-
-- **動作環境**: Windower 4 + GearSwap
-- **前提ライブラリ**: Mote-libs (Mote-Include.lua)
-- **ファイル配置場所**:
-  - `Windower4/addons/GearSwap/data/プレイヤー名_PUP.lua`
-  - または `Windower4/addons/GearSwap/data/PUP.lua`
+5. **First-Engagement Immediate Swapping / 初回交戦時（リキャスト0秒時）の即時換装**
+   - Triggers enmity pre-swapping instantly on the very first engage if Fire/Light maneuvers are active, ensuring maximum initial hate generation.
+   - 火/光マニューバが入った状態で敵にマトンをぶつけた最初の1発目から、逃さず敵対心装備に着替えてアビリティを発動します。
 
 ---
 
-## ⚙️ 参照装備セットの構造定義 (PUP_gear.lua / PUP.lua)
+## 📁 Requirements & Directory Structure / 前提条件と配置場所
 
-本スクリプト動作のため、以下の名称で装備セットを定義してください。
+- **Environment**: Windower 4 + GearSwap
+- **Dependency**: Mote-libs (`Mote-Include.lua`)
+- **File Location**:
+  - `Windower4/addons/GearSwap/data/YOUR_CHARACTER_NAME_PUP.lua`
+  - OR `Windower4/addons/GearSwap/data/PUP.lua`
 
-- **挑発（ストロボ）用装備** (`sets.midcast.Pet['Provoke']`)
-  - ヘヨカ装備等の敵対心＋装備を配置します。
-- **フラッシュバルブ用装備** (`sets.midcast.Pet['Flashbulb']`)
-  - ヘヨカ装備等の敵対心＋/魔命中装備を配置します。
-- **オートマトンWS用一括装備** (`sets.midcast.Pet.WeaponSkill`)
-  - タリア/ムパカ/ＰＩトベ等のマトンWS強化装備を配置します。
+---
 
-### 定義コード例：
+## ⚙️ Gear Set Definitions / 装備セット定義
+
+Define the following sets in your `PUP_gear.lua` or inside `get_sets()` in `PUP.lua`:  
+本スクリプト動作のため、以下の名称で装備セットを定義してください（英語名・日本語名双方の装備名に対応しています）。
+
+- **Provoke / Strobe Set** (`sets.midcast.Pet['Provoke']`): Enmity+ gear (e.g., Heyoka set / ヘヨカ装備)
+- **Flashbulb Set** (`sets.midcast.Pet['Flashbulb']`): Enmity+ / Magic Accuracy gear
+- **Automaton WS Set** (`sets.midcast.Pet.WeaponSkill`): Pet WS damage gear (e.g., Tali'ah, Mpaca, Pitre / タリア・ムパカ等)
+
+### Example Code (`PUP_gear.lua`):
 
 ```lua
--- 挑発（ストロボ）用装備
+-- Provoke / Strobe Gear (Enmity+)
 sets.midcast.Pet['Provoke'] = {
-    head="ヘヨカキャップ+1",
-    body="ヘヨカハーネス+1",
-    hands="ヘヨカミトン+1",
-    legs="ヘヨカサブリガ+1",
-    feet="ヘヨカレギンス+1",
-    left_ear="ライムアイスピアス",
-    right_ear="ドメスティカピアス",
+    head="Heyoka Cap +1",        -- ヘヨカキャップ+1
+    body="Heyoka Harness +1",    -- ヘヨカハーネス+1
+    hands="Heyoka Mittens +1",   -- ヘヨカミトン+1
+    legs="Heyoka Subligar +1",   -- ヘヨカサブリガ+1
+    feet="Heyoka Leggings +1",   -- ヘヨカレギンス+1
+    left_ear="Rimeice Earring",  -- ライムアイスピアス
+    right_ear="Domesticator's Earring", -- ドメスティカピアス
 }
 
--- フラッシュバルブ用装備
+-- Flashbulb Gear (Enmity+ / M.Acc)
 sets.midcast.Pet['Flashbulb'] = {
-    head="ヘヨカキャップ+1",
-    body="ヘヨカハーネス+1",
-    hands="ヘヨカミトン+1",
-    legs="ヘヨカサブリガ+1",
-    feet="ヘヨカレギンス+1",
-    left_ear="ライムアイスピアス",
-    right_ear="ドメスティカピアス",
+    head="Heyoka Cap +1",
+    body="Heyoka Harness +1",
+    hands="Heyoka Mittens +1",
+    legs="Heyoka Subligar +1",
+    feet="Heyoka Leggings +1",
+    left_ear="Rimeice Earring",
+    right_ear="Domesticator's Earring",
 }
 
--- オートマトンWS用一括装備
+-- Automaton WeaponSkill Gear
 sets.midcast.Pet.WeaponSkill = {
-    head="タリアターバン+2",
-    body="ＰＩトベ+3",
-    hands="ムパカグローブ",
-    legs="タリアサラウィル+2",
-    feet="ムパカブーツ",
-    neck="エンパスネックレス",
-    waist="インカーネトサッシュ",
-    left_ear="ブラーナピアス",
-    right_ear="カラゴズピアス+1",
-    left_ring="パルーグリング",
-    right_ring="オーバーベアリング",
-    back="ビスシアスマント",
+    head="Tali'ah Turban +2",    -- タリアターバン+2
+    body="Pitre Tobe +3",         -- ＰＩトベ+3
+    hands="Mpaca's Gloves",      -- ムパカグローブ
+    legs="Tali'ah Seraweels +2", -- タリアサラウィル+2
+    feet="Mpaca's Boots",        -- ムパカブーツ
+    neck="Empath Necklace",      -- エンパスネックレス
+    waist="Incarnant Sash",      -- インカーネトサッシュ
+    left_ear="Burana Earring",   -- ブラーナピアス
+    right_ear="Karagoz Earring +1", -- カラゴズピアス+1
+    left_ring="Paluq Ring",      -- パルーグリング
+    right_ring="Overbearing Ring", -- オーバーベアリング
+    back="Visucius's Mantle",    -- ビスシアスマント
 }
 ```
 
 ---
 
-## 📜 ライセンス / 免責事項
+## 📜 License & Disclaimer / ライセンス・免責事項
 
-- **ライセンス**: MIT License（改変・再配布自由）
-- **免責事項**: 本スクリプトは個人のプレイ環境に合わせて構築されたものです。利用は自己責任でお願いいたします。
+- **License**: MIT License (Feel free to use, modify, and distribute / 改変・再配布自由)
+- **Disclaimer**: Use at your own risk. (利用は自己責任でお願いいたします)
