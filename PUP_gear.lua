@@ -14,6 +14,7 @@ function init_gear_sets()
     gear['ウルスラグナ']              = {name="ウルスラグナ"}
     gear['サクパタフィスト']          = {name="サクパタフィスト"}
 	gear['乾坤圏']          = {name="乾坤圏"}
+	gear['シュコアトル']          = { name="シュコアトル", augments={'Path: C',}}
     gear.Slip                         = {name="フレンジーサリット"}
 
     --モクシャ
@@ -57,18 +58,18 @@ function init_gear_sets()
     }
 
     sets.idle.cut2 = {
-    head="ニャメヘルム",
-    body="ニャメメイル",
-    hands="ニャメガントレ",
-    legs="ニャメフランチャ",
-    feet="ニャメソルレット",
+    head="マリグナスシャポー",
+    body="マリグナスタバード",
+    hands="マリグナスグローブ",
+    legs="マリグナスタイツ",
+    feet="マリグナスブーツ",
     neck="バーシチョーカー+1",
-    waist="プラチナモグベルト",
+    waist="無の腰当",
     left_ear="アスプロピアス",
     right_ear={ name="カラゴズピアス+1", augments={'System: 1 ID: 1676 Val: 0','Accuracy+15','Mag. Acc.+15','"Store TP"+5',}},
     left_ring="メランリング",
     right_ring="シュネデックリング",
-    back={ name="ビスシアスマント", augments={'Pet: Acc.+20 Pet: R.Acc.+20 Pet: Atk.+20 Pet: R.Atk.+20','Eva.+20 /Mag. Eva.+20','Pet: Accuracy+10 Pet: Rng. Acc.+10','Pet: "Regen"+10','Pet: "Regen"+5',}},
+    back="月明の羽衣",
     }
 
     sets.idle.cut = {
@@ -143,18 +144,18 @@ function init_gear_sets()
     }
 
     sets.engaged.hontai = {
-    head="ムパカキャップ",
-    body="ムパカダブレット",
+    head="マリグナスシャポー",
+    body="マリグナスタバード",
     hands="マリグナスグローブ",
-    legs="ムパカホーズ",
+    legs="マリグナスタイツ",
     feet="マリグナスブーツ",
     neck="無の喉輪",
     waist="月虹帯+1",
-    left_ear="シェレピアス",
-    right_ear="マーケピアス+1",
+    left_ear="テロスピアス",
+    right_ear="セサンスピアス",
     left_ring="シーリチリング+1",
-    right_ring="ゲリリング",
-    back={ name="ビスシアスマント", augments={'Pet: Acc.+20 Pet: R.Acc.+20 Pet: Atk.+20 Pet: R.Atk.+20','Accuracy+20 Attack+20','Pet: Accuracy+10 Pet: Rng. Acc.+10','Pet: Haste+10','Pet: Damage taken -5%',}},
+    right_ring="シーリチリング+1",
+    back="無の外装",
     }
 
     -- ===================================================================
@@ -165,6 +166,7 @@ function init_gear_sets()
 
     -- ① 【一括共通】すべてのマトンWSで使う高威力装備セット
     sets.midcast.Pet.WeaponSkill = {
+	    main={ name="シュコアトル", augments={'Path: C',}},
         head="ＫＧカペッロ+3",
         body="ＰＩトベ+4",
         hands="ムパカグローブ",
@@ -181,6 +183,7 @@ function init_gear_sets()
 
     -- ③ ボーンクラッシャー専用セット
     sets.midcast.Pet['ボーンクラッシャー'] = set_combine(sets.midcast.Pet.WeaponSkill, {
+	    main={ name="シュコアトル", augments={'Path: C',}},
         head="ＫＧカペッロ+3",
         body="ＰＩトベ+4",
         hands="ムパカグローブ",
@@ -257,13 +260,32 @@ function init_gear_sets()
     legs="ニャメフランチャ",
     feet="ニャメソルレット",
     neck="フォシャゴルゲット",
-    waist="フォシャベルト",
+    waist="月虹帯+1",
     left_ear="シェレピアス",
     right_ear="イシュヴァラピアス",
     left_ring="ニックマドゥリング",
     right_ring="コーネリアリング",
     }
     
+	sets.precast.WS.Critical = {
+--    range="Ｐ．ストリンガー+1",
+    head="ブリスタサリット+1",
+    body="ＦＯトベ+3",
+    hands="ＰＩダスタナ+3",
+    legs="ニャメフランチャ",
+    feet="ニャメソルレット",
+    neck="フォシャゴルゲット",
+    waist="月虹帯+1",
+    left_ear="昏黄の耳飾り",
+    right_ear="イシュヴァラピアス",
+    left_ring="スローダリング",
+    right_ring="コーネリアリング",
+    back="無の外装",
+    }
+	    -- ★【追加】WSクリティカル（連環六合圏・エヴィサレーション等用）
+    -- Damage装備をそのまま流用する場合：
+--    sets.precast.WS.Critical = sets.precast.WS.Damage
+	
     -- WS魔攻
     sets.precast.WS.Magic = {
     }

@@ -1,51 +1,111 @@
 -------------------------------------------------------------------------------------------------------------------
--- PUP.lua - Mote-Include 対応 / 引き戻しタイマー維持・優先度完全制御 最終確定版
+-- PUP.lua - Mote-Include 対応 / 引き戻しタイマー維持・優先度完全制御 ＋ TP1000即撃ち自動実行 v2.1
 -------------------------------------------------------------------------------------------------------------------
 
 function get_sets()
     mote_include_version = 2
     include('Mote-Include.lua')
     set_language('japanese')
+
+    -- 装備定義ファイルの読み込み
+    include('PUP_gear.lua')
 end
 
 function job_setup()
-    state.IdleMode:options('Normal', 'Tate')
+    state.IdleMode:options('Normal', 'Tate', 'cut2')
     state.OffenseMode:options('Normal', 'Tate', 'Cut', 'hontai')
     state.WeaponskillMode:options('Normal', 'SubtleBlow')
-    state.MainWeapons = M{'オータス', 'ニャフロンアダーガ', '乾坤圏', 'ミッドナイト', 'ウルスラグナ', 'サクパタフィスト'}
+    state.MainWeapons = M{'オータス', 'ニャフロンアダーガ', '乾坤圏', 'ミッドナイト', 'シュコアトル', 'ウルスラグナ', 'サクパタフィスト'}
     state.RangeWeapons = M{'Ｐ．ストリンガー+1'}
 
-    -- 装備セット初期化
-    init_gear_sets()
+    -- 【本体自動WS機能】TP1000以上で即撃ち（デフォルト: OFF。自動WSは OmniChain に任せる。//gs c toggle AutoWS で ON）
+    state.AutoWS = M(false, 'Auto WS')
+    -- 自動発動するWSの選択肢（デフォルト：連環六合圏）
+    state.AutoWSName = M('連環六合圏', 'ビクトリースマイト', '四神円舞', '空鳴拳')
+
+    -- 毎秒の監視処理を「gs c pup_tick」で受け取る。
+    -- job_self_command は user-globals.lua で定義済みなので、上書きせずに前段へ差し込む。
+    local base_self_command = job_self_command
+    job_self_command = function(cmdParams, eventArgs)
+        if cmdParams[1] == 'pup_tick' then
+            pup_tick()
+            eventArgs.handled = true
+        elseif base_self_command then
+            base_self_command(cmdParams, eventArgs)
+        end
+    end
+
+    -- 装備セット初期化（PUP_gear.lua）
+    if init_gear_sets then init_gear_sets() end
 end
+
+-------------------------------------------------------------------
+-- 定数
+-------------------------------------------------------------------
+local STROBE_RECAST = 30         -- ストロボ（挑発）の再使用間隔 (秒)
+local FLASHBULB_RECAST = 45      -- フラッシュバルブの再使用間隔 (秒)
+local PRE_EQUIP_SEC = 2          -- 再使用まで残りこの秒数以下で事前着替え
+local PRE_EQUIP_TIMEOUT = 10     -- 事前着替えから発動しないまま、この秒数で諦める
+local PET_WS_TP = 930            -- マトンWS用装備へ事前着替えするマトンTP
+
+local AUTOWS_TP = 1000
+local AUTOWS_RETRY_SEC = 3       -- 自動WSを再送するまでの最短間隔 (秒)
+local AUTOWS_REACH = 3.5         -- 自動WSを撃つ距離: 敵の大きさ + この値 (yalm) 以内
+
+-- オートマトンの技ID (res/monster_abilities.lua)。行動パケット(カテゴリ11)の param と比べる
+local ABIL_PROVOKE = 1945
+local ABIL_FLASHBULB = 1947
+
+-- バフID (res/buffs.lua)
+local BUFF_FIRE_MANEUVER = 300
+local BUFF_LIGHT_MANEUVER = 306
+-- WSを撃てない状態: 睡眠, 睡眠(2), 石化, スタン, 魅了, アムネジア, テラー
+local NO_WS_BUFFS = {2, 19, 7, 10, 14, 16, 28}
 
 -------------------------------------------------------------------
 -- 内部制御変数
 -------------------------------------------------------------------
-local strobe_time = 0
-local strobe_recast = 0
-local strobe_equipped_time = 0
+local strobe_time = 0            -- 最後にストロボ（挑発）が出た時刻。0 = 未発動
+local flashbulb_time = 0         -- 最後にフラッシュバルブが出た時刻。0 = 未発動
 
-local flashbulb_time = 0
-local flashbulb_recast = 0
-local flashbulb_equipped_time = 0
+-- 今着ているマトン用装備: nil(通常) / 'strobe' / 'flashbulb' / 'ws'
+local pet_gear = nil
+local pet_gear_since = 0
 
-local is_strobe_equipped = false
-local is_flashbulb_equipped = false
-local is_ws_equipped = false
-local last_check = 0
+local last_autows_time = 0
 
 -------------------------------------------------------------------
--- アタッチメント装着判定ヘルパー関数
+-- 判定ヘルパー
 -------------------------------------------------------------------
-local function has_strobe_attachment()
+local function has_attachment(...)
     if not pet.isvalid or not pet.attachments then return false end
-    return (pet.attachments.strobe or pet.attachments['strobe II'] or pet.attachments['ストロボ'] or pet.attachments['ストロボII']) and true or false
+    for _, name in ipairs({...}) do
+        if pet.attachments[name] then return true end
+    end
+    return false
 end
 
-local function has_flashbulb_attachment()
-    if not pet.isvalid or not pet.attachments then return false end
-    return (pet.attachments.flashbulb or pet.attachments['フラッシュバルブ']) and true or false
+local function recast_left(fired_time, recast, now)
+    if fired_time == 0 then return 0 end
+    return math.max(0, recast - (now - fired_time))
+end
+
+local function pet_set(name)
+    return sets.midcast and sets.midcast.Pet and sets.midcast.Pet[name]
+end
+
+-- マトン用装備を着る。set が無ければ何もしない
+local function wear_pet_gear(mode, set, now)
+    pet_gear = mode
+    pet_gear_since = now
+    if set then equip(set) end
+end
+
+-- 通常装備に戻す
+local function restore_gear()
+    pet_gear = nil
+    pet_gear_since = 0
+    handle_equipping_gear(player.status)
 end
 
 -------------------------------------------------------------------
@@ -54,211 +114,150 @@ end
 function job_pet_midcast(spell, action, spellMap, eventArgs)
     if not spell then return end
 
-    -- ① 挑発（ストロボ）発動時
-    if spell.english == 'Provoke' or spell.japanese == '挑発' or spell.name == 'Strobe' then
-        if sets.midcast and sets.midcast.Pet and sets.midcast.Pet['Provoke'] then
-            equip(sets.midcast.Pet['Provoke'])
+    if spell.english == 'Provoke' then
+        local set = pet_set('Provoke')
+        if set then
+            equip(set)
             eventArgs.handled = true
         end
 
-    -- ② フラッシュバルブ発動時
-    elseif spell.english == 'Flashbulb' or spell.japanese == 'フラッシュバルブ' then
-        if sets.midcast and sets.midcast.Pet and sets.midcast.Pet['Flashbulb'] then
-            equip(sets.midcast.Pet['Flashbulb'])
+    elseif spell.english == 'Flashbulb' then
+        local set = pet_set('Flashbulb')
+        if set then
+            equip(set)
             eventArgs.handled = true
         end
 
-    -- ③ マトンのウェポンスキル（WS）発動時
-    elseif spell.type == 'PuppetWS' then
-        is_strobe_equipped = false
-        is_flashbulb_equipped = false
-        is_ws_equipped = true
-        if sets.midcast and sets.midcast.Pet then
-            if sets.midcast.Pet[spell.japanese] or sets.midcast.Pet[spell.english] then
-                equip(sets.midcast.Pet[spell.japanese] or sets.midcast.Pet[spell.english])
-                eventArgs.handled = true
-            elseif sets.midcast.Pet.WeaponSkill then
-                equip(sets.midcast.Pet.WeaponSkill)
-                eventArgs.handled = true
-            end
+    -- マトンのWS（連携属性を持つ技）
+    elseif spell.skillchain_a then
+        pet_gear = 'ws'
+        local set = pet_set(spell.japanese) or pet_set(spell.english) or pet_set('WeaponSkill')
+        if set then
+            equip(set)
+            eventArgs.handled = true
         end
     end
 end
 
 -------------------------------------------------------------------
--- タイマーリセット＆通常装備復帰の共通処理
--------------------------------------------------------------------
-local function reset_strobe_timer()
-    strobe_time = os.time()
-    strobe_recast = 30
-    is_strobe_equipped = false
-    strobe_equipped_time = 0
-    if handle_equipping_gear then handle_equipping_gear(player.status) end
-end
-
-local function reset_flashbulb_timer()
-    flashbulb_time = os.time()
-    flashbulb_recast = 45
-    is_flashbulb_equipped = false
-    flashbulb_equipped_time = 0
-    if handle_equipping_gear then handle_equipping_gear(player.status) end
-end
-
--------------------------------------------------------------------
--- ペットアクション完了時
+-- ペットアクション完了時（装備の戻しは Mote 標準処理が行う）
 -------------------------------------------------------------------
 function job_pet_aftercast(spell, action, spellMap, eventArgs)
-    is_ws_equipped = false
-    if spell then
-        if spell.english == 'Provoke' or spell.japanese == '挑発' or spell.name == 'Strobe' then
-            reset_strobe_timer()
-        elseif spell.english == 'Flashbulb' or spell.japanese == 'フラッシュバルブ' or spell.name == 'Flashbulb' then
-            reset_flashbulb_timer()
-        end
-    end
-    if handle_equipping_gear then
-        handle_equipping_gear(player.status)
-    end
+    pet_gear = nil
+    pet_gear_since = 0
 end
 
 -------------------------------------------------------------------
--- 毎秒監視＆リアルタイムタイマー計算 (prerender)
+-- 本体の自動WS
 -------------------------------------------------------------------
-windower.register_event('prerender', function()
-    local now = os.time()
-    if now == last_check then return end
-    last_check = now
+local function can_auto_ws()
+    if not state.AutoWS.value then return false end
+    if player.status ~= 'Engaged' or player.tp < AUTOWS_TP then return false end
+    if midaction() then return false end
 
-    -- 【タイマー計算】マトンが存在していれば引き戻し中に関わらず地球時間で独立カウント
-    if pet.isvalid then
-        if strobe_time > 0 then
-            local elapsed = now - strobe_time
-            strobe_recast = (elapsed < 30) and (30 - elapsed) or 0
-        else
-            strobe_recast = 0
-        end
+    for _, id in ipairs(NO_WS_BUFFS) do
+        if buffactive[id] then return false end
+    end
 
-        if flashbulb_time > 0 then
-            local elapsed = now - flashbulb_time
-            flashbulb_recast = (elapsed < 45) and (45 - elapsed) or 0
-        else
-            flashbulb_recast = 0
-        end
-    else
-        -- マトン非存在（消滅）時のみタイマー・フラグを全初期化
+    local t = windower.ffxi.get_mob_by_target('t')
+    if not t or not t.valid_target or t.spawn_type ~= 16 or t.hpp == 0 then return false end
+    if math.sqrt(t.distance) > (t.model_size or 0) + AUTOWS_REACH then return false end
+
+    return true
+end
+
+local function auto_ws(now)
+    if now - last_autows_time < AUTOWS_RETRY_SEC then return end
+    if not can_auto_ws() then return end
+
+    last_autows_time = now
+    local ws_name = state.AutoWSName.value or '連環六合圏'
+    send_command('input /ws "'..windower.to_shift_jis(ws_name)..'" <t>')
+end
+
+-------------------------------------------------------------------
+-- マトン用装備の事前着替え
+-------------------------------------------------------------------
+local function update_pet_gear(now)
+    if not pet.isvalid then
+        -- マトン消滅時はタイマーを初期化し、着ていたマトン用装備も戻す
         strobe_time = 0
-        strobe_recast = 0
-        strobe_equipped_time = 0
         flashbulb_time = 0
-        flashbulb_recast = 0
-        flashbulb_equipped_time = 0
-        is_strobe_equipped = false
-        is_flashbulb_equipped = false
-        is_ws_equipped = false
+        if pet_gear then restore_gear() end
         return
     end
 
-    -- 【着替え判定】マトンが戦闘（Engaged）状態の場合のみ着替え制御を行う
+    -- 本体・マトンの行動中は着替えない（行動用の装備を崩さないため）
+    if midaction() or pet_midaction() then return end
+
+    -- 事前着替えしたのに発動しない場合は、発動したものとみなして諦める
+    if pet_gear == 'strobe' and now - pet_gear_since >= PRE_EQUIP_TIMEOUT then
+        strobe_time = now
+    elseif pet_gear == 'flashbulb' and now - pet_gear_since >= PRE_EQUIP_TIMEOUT then
+        flashbulb_time = now
+    end
+
+    -- 今着るべきマトン用装備を決める（上ほど優先）
+    local want = nil
     if pet.status == 'Engaged' then
-        local has_fire = (buffactive['Fire Maneuver'] or buffactive['ファイアマニューバ'] or buffactive['火マニューバ'])
-        local has_light = (buffactive['Light Maneuver'] or buffactive['ライトマニューバ'] or buffactive['光マニューバ'])
-
-        -- 事前着替え判定（リキャスト2秒以下、または0秒＝即発動可能）
-        local strobe_due = has_strobe_attachment() and has_fire and strobe_recast <= 2
-        local flashbulb_due = has_flashbulb_attachment() and has_light and flashbulb_recast <= 2
-
-        -- 安全ガード：10秒以上発動しない場合は自動リセット
-        if is_strobe_equipped and strobe_equipped_time > 0 and (now - strobe_equipped_time >= 10) then
-            reset_strobe_timer()
-            strobe_due = false
+        if has_attachment('ストロボ', 'ストロボII') and buffactive[BUFF_FIRE_MANEUVER]
+                and recast_left(strobe_time, STROBE_RECAST, now) <= PRE_EQUIP_SEC then
+            want = 'strobe'
+        elseif has_attachment('フラッシュバルブ') and buffactive[BUFF_LIGHT_MANEUVER]
+                and recast_left(flashbulb_time, FLASHBULB_RECAST, now) <= PRE_EQUIP_SEC then
+            want = 'flashbulb'
+        elseif (pet.tp or 0) >= PET_WS_TP then
+            want = 'ws'
         end
-        if is_flashbulb_equipped and flashbulb_equipped_time > 0 and (now - flashbulb_equipped_time >= 10) then
-            reset_flashbulb_timer()
-            flashbulb_due = false
-        end
+    end
 
-        -- 【優先度 1】 ストロボ事前着替え
-        if strobe_due then
-            if not is_strobe_equipped then
-                is_strobe_equipped = true
-                is_flashbulb_equipped = false
-                is_ws_equipped = false
-                strobe_equipped_time = now
-                if sets.midcast and sets.midcast.Pet and sets.midcast.Pet['Provoke'] then
-                    equip(sets.midcast.Pet['Provoke'])
-                end
-            end
+    if want == pet_gear then return end
 
-        -- 【優先度 2】 フラッシュバルブ事前着替え
-        elseif flashbulb_due then
-            if not is_flashbulb_equipped then
-                is_strobe_equipped = false
-                is_flashbulb_equipped = true
-                is_ws_equipped = false
-                flashbulb_equipped_time = now
-                if sets.midcast and sets.midcast.Pet and sets.midcast.Pet['Flashbulb'] then
-                    equip(sets.midcast.Pet['Flashbulb'])
-                end
-            end
-
-        -- 【優先度 3】 マトンTP930以上到達時のWS事前着替え
-        elseif pet.tp >= 930 then
-            if not is_ws_equipped then
-                is_ws_equipped = true
-                is_strobe_equipped = false
-                is_flashbulb_equipped = false
-                if sets.midcast and sets.midcast.Pet and sets.midcast.Pet.WeaponSkill then
-                    equip(sets.midcast.Pet.WeaponSkill)
-                end
-            end
-
-        -- 【優先度 4】 通常装備への復帰
-        else
-            if is_strobe_equipped or is_flashbulb_equipped or is_ws_equipped then
-                is_strobe_equipped = false
-                is_flashbulb_equipped = false
-                is_ws_equipped = false
-                strobe_equipped_time = 0
-                flashbulb_equipped_time = 0
-                if handle_equipping_gear then handle_equipping_gear(player.status) end
-            end
-        end
+    if want == 'strobe' then
+        wear_pet_gear('strobe', pet_set('Provoke'), now)
+    elseif want == 'flashbulb' then
+        wear_pet_gear('flashbulb', pet_set('Flashbulb'), now)
+    elseif want == 'ws' then
+        wear_pet_gear('ws', pet_set('WeaponSkill'), now)
     else
-        -- マトンがEngaged以外（引き戻し時）は着替えフラグのみ解除して通常/待機装備へ復帰（タイマー自体は維持）
-        if is_strobe_equipped or is_flashbulb_equipped or is_ws_equipped then
-            is_strobe_equipped = false
-            is_flashbulb_equipped = false
-            is_ws_equipped = false
-            strobe_equipped_time = 0
-            flashbulb_equipped_time = 0
-            if handle_equipping_gear then handle_equipping_gear(player.status) end
-        end
+        restore_gear()
     end
-end)
+end
 
 -------------------------------------------------------------------
--- パケット／テキスト受信時のタイマーリセット処理
+-- 毎秒の処理（gs c pup_tick から呼ばれる）
 -------------------------------------------------------------------
-windower.register_event('action', function(act)
-    if pet.isvalid and act and act.actor_id == pet.id then
-        if act.category == 6 or act.category == 11 or act.category == 13 then
-            if is_strobe_equipped or (has_strobe_attachment() and strobe_recast <= 2) then
-                reset_strobe_timer()
-            elseif is_flashbulb_equipped or (has_flashbulb_attachment() and flashbulb_recast <= 2) then
-                reset_flashbulb_timer()
-            end
-        end
-    end
+function pup_tick()
+    local now = os.time()
+    auto_ws(now)
+    update_pet_gear(now)
+end
+
+-------------------------------------------------------------------
+-- イベント
+-- GearSwap の register_event は呼ばれるたびに装備処理を挟むため、毎フレーム・
+-- 全行動パケットで動くものは raw_register_event で受けて、必要なときだけ処理する
+-------------------------------------------------------------------
+local last_tick = 0
+windower.raw_register_event('prerender', function()
+    local now = os.time()
+    if now == last_tick then return end
+    last_tick = now
+    send_command('gs c pup_tick')
 end)
 
-windower.register_event('incoming text', function(original, modified, mode)
-    if not original or type(original) ~= 'string' or not pet.isvalid then return end
-    if pet.name and string.find(original, pet.name) then
-        if string.find(original, "Provoke") or string.find(original, "挑発") or string.find(original, "Strobe") then
-            reset_strobe_timer()
-        elseif string.find(original, "Flashbulb") or string.find(original, "フラッシュバルブ") then
-            reset_flashbulb_timer()
-        end
+-- マトンのストロボ（挑発）・フラッシュバルブを技IDで検出してタイマーを更新する。
+-- 装備の戻しは次の pup_tick が行う
+windower.raw_register_event('action', function(act)
+    if act.category ~= 11 then return end
+    if act.param ~= ABIL_PROVOKE and act.param ~= ABIL_FLASHBULB then return end
+
+    local my_pet = windower.ffxi.get_mob_by_target('pet')
+    if not my_pet or act.actor_id ~= my_pet.id then return end
+
+    if act.param == ABIL_PROVOKE then
+        strobe_time = os.time()
+    else
+        flashbulb_time = os.time()
     end
-    return modified, mode
 end)
