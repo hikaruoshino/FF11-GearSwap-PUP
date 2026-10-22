@@ -18,11 +18,6 @@ function job_setup()
     state.MainWeapons = M{'オータス', 'ニャフロンアダーガ', '乾坤圏', 'ミッドナイト', 'シュコアトル', 'ウルスラグナ', 'サクパタフィスト'}
     state.RangeWeapons = M{'Ｐ．ストリンガー+1'}
 
-    -- 【本体自動WS機能】TP1000以上で即撃ち（デフォルト: OFF。自動WSは OmniChain に任せる。//gs c toggle AutoWS で ON）
-    state.AutoWS = M(false, 'Auto WS')
-    -- 自動発動するWSの選択肢（デフォルト：連環六合圏）
-    state.AutoWSName = M('連環六合圏', 'ビクトリースマイト', '四神円舞', '空鳴拳')
-
     -- 毎秒の監視処理を「gs c pup_tick」で受け取る。
     -- job_self_command は user-globals.lua で定義済みなので、上書きせずに前段へ差し込む。
     local base_self_command = job_self_command
@@ -48,10 +43,6 @@ local PRE_EQUIP_SEC = 2          -- 再使用まで残りこの秒数以下で�
 local PRE_EQUIP_TIMEOUT = 10     -- 事前着替えから発動しないまま、この秒数で諦める
 local PET_WS_TP = 930            -- マトンWS用装備へ事前着替えするマトンTP
 
-local AUTOWS_TP = 1000
-local AUTOWS_RETRY_SEC = 3       -- 自動WSを再送するまでの最短間隔 (秒)
-local AUTOWS_REACH = 3.5         -- 自動WSを撃つ距離: 敵の大きさ + この値 (yalm) 以内
-
 -- オートマトンの技ID (res/monster_abilities.lua)。行動パケット(カテゴリ11)の param と比べる
 local ABIL_PROVOKE = 1945
 local ABIL_FLASHBULB = 1947
@@ -59,8 +50,6 @@ local ABIL_FLASHBULB = 1947
 -- バフID (res/buffs.lua)
 local BUFF_FIRE_MANEUVER = 300
 local BUFF_LIGHT_MANEUVER = 306
--- WSを撃てない状態: 睡眠, 睡眠(2), 石化, スタン, 魅了, アムネジア, テラー
-local NO_WS_BUFFS = {2, 19, 7, 10, 14, 16, 28}
 
 -------------------------------------------------------------------
 -- 内部制御変数
@@ -71,8 +60,6 @@ local flashbulb_time = 0         -- 最後にフラッシュバルブが出た�
 -- 今着ているマトン用装備: nil(通常) / 'strobe' / 'flashbulb' / 'ws'
 local pet_gear = nil
 local pet_gear_since = 0
-
-local last_autows_time = 0
 
 -------------------------------------------------------------------
 -- 判定ヘルパー
@@ -148,34 +135,6 @@ function job_pet_aftercast(spell, action, spellMap, eventArgs)
 end
 
 -------------------------------------------------------------------
--- 本体の自動WS
--------------------------------------------------------------------
-local function can_auto_ws()
-    if not state.AutoWS.value then return false end
-    if player.status ~= 'Engaged' or player.tp < AUTOWS_TP then return false end
-    if midaction() then return false end
-
-    for _, id in ipairs(NO_WS_BUFFS) do
-        if buffactive[id] then return false end
-    end
-
-    local t = windower.ffxi.get_mob_by_target('t')
-    if not t or not t.valid_target or t.spawn_type ~= 16 or t.hpp == 0 then return false end
-    if math.sqrt(t.distance) > (t.model_size or 0) + AUTOWS_REACH then return false end
-
-    return true
-end
-
-local function auto_ws(now)
-    if now - last_autows_time < AUTOWS_RETRY_SEC then return end
-    if not can_auto_ws() then return end
-
-    last_autows_time = now
-    local ws_name = state.AutoWSName.value or '連環六合圏'
-    send_command('input /ws "'..windower.to_shift_jis(ws_name)..'" <t>')
-end
-
--------------------------------------------------------------------
 -- マトン用装備の事前着替え
 -------------------------------------------------------------------
 local function update_pet_gear(now)
@@ -229,7 +188,6 @@ end
 -------------------------------------------------------------------
 function pup_tick()
     local now = os.time()
-    auto_ws(now)
     update_pet_gear(now)
 end
 

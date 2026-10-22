@@ -1,4 +1,4 @@
-# FF11-GearSwap-PUP (v2.1)
+# FF11-GearSwap-PUP (v2.2)
 
 FF11（ファイナルファンタジーXI）のからくり士（PUP）用 GearSwap スクリプトです。
 オートマトンの **挑発（ストロボ）**・**フラッシュバルブ** のリキャストを管理して **発動の2秒前に敵対心装備へ先回りして着替え**、マトンの **TPが930に届いたらWS装備へ事前着替え** します。
@@ -20,10 +20,6 @@ FF11（ファイナルファンタジーXI）のからくり士（PUP）用 Gear
    - マトンを手元に引き戻しても、リキャストのタイマーは数え続けます。マトンが消えたときだけ初期化します。
 5. **10秒の安全ガード**
    - 事前着替えから10秒たっても発動しない場合は、発動したものとみなして通常装備に戻ります。
-6. **本体の自動WS（初期値 OFF）**
-   - ONにすると、戦闘中に本体のTPが1000以上になったとき、選んだWS（初期値: 連環六合圏）を自動で撃ちます。
-   - 睡眠・石化・スタン・魅了・アムネジア・テラー中や、敵が遠いときは撃ちません。
-   - 自動連携アドオン [OmniChain](https://github.com/hikaruoshino/OmniChain) と一緒に使う場合は、OFF のままにして WS は OmniChain に任せてください。
 
 ---
 
@@ -33,7 +29,7 @@ FF11（ファイナルファンタジーXI）のからくり士（PUP）用 Gear
 - **動作を軽く**: 毎フレーム呼ばれる処理（中身は 1 秒に 1 回だけ実行）と行動パケットの処理を、GearSwap の装備処理を挟まない方法（`raw_register_event`）で受けるようにしました。
 - **行動中は着替えない**: 本体・マトンの行動中（`midaction()` / `pet_midaction()`）は事前着替えを止めます。
 - **マニューバの判定をバフIDに**: 表記ゆれの影響を受けません。
-- **本体の自動WS** を追加（初期値 OFF）。
+- （v2.1 に入っていた本体の自動WSは、v2.2 で公開版から外しました。）
 - `user-globals.lua` の `job_self_command` を上書きせずに、前に処理を差し込む方式にしました。
 
 ---
@@ -45,7 +41,7 @@ FF11（ファイナルファンタジーXI）のからくり士（PUP）用 Gear
 | **Windower 4 + GearSwap** | GearSwap は Windower のアドオン一覧から入れられます |
 | **Mote-Include** | GearSwap に最初から入っています（`GearSwap/libs/Mote-Include.lua`） |
 | **日本語クライアント** | アタッチメント名・WS名・装備名は日本語表記です |
-| **ぐりーずさんの `user-globals.lua`（推奨）** | 武器の切り替え（`MainWeapons`）・初期武器・ロックスタイルはこのファイルの仕組みを使います。無くてもマトン用の着替えと自動WSは動きます |
+| **ぐりーずさんの `user-globals.lua`（推奨）** | 武器の切り替え（`MainWeapons`）・初期武器・ロックスタイルはこのファイルの仕組みを使います。無くてもマトン用の着替えは動くはずですが、作者の環境では、`user-globals.lua` を入れた状態でしか確認していません |
 
 `user-globals.lua` は [ぐりーずさんの GearSwap（ktgreeds/GearSwap）](https://github.com/ktgreeds/GearSwap/tree/main/data) から入手できます。詳しくは [greeds.net の解説](https://greeds.net/gearswap-code-list/) を見てください。
 
@@ -55,7 +51,7 @@ FF11（ファイナルファンタジーXI）のからくり士（PUP）用 Gear
 
 ```text
 Windower4/addons/GearSwap/data/
-├── PUP.lua              <-- ロジック（タイマー・優先度制御・自動WS）
+├── PUP.lua              <-- ロジック（タイマー・優先度制御）
 └── <キャラ名>/
     └── PUP_gear.lua     <-- 装備セット（自分の装備に書き換えて使う）
 ```
@@ -93,8 +89,6 @@ Windower4/addons/GearSwap/data/
 
 | コマンド | 内容 |
 | :--- | :--- |
-| `/console gs c toggle AutoWS` | 本体の自動WSの ON / OFF |
-| `/console gs c cycle AutoWSName` | 自動WSで撃つWSを切り替え（連環六合圏 → ビクトリースマイト → 四神円舞 → 空鳴拳） |
 | `/console gs c cycle OffenseMode` | 戦闘中の装備を切り替え（Normal / Tate / Cut / hontai） |
 | `/console gs c cycle IdleMode` | 待機装備を切り替え（Normal / Tate / cut2） |
 | `/console gs c cycle MainWeapons` | 武器を切り替え（`user-globals.lua` が必要） |
@@ -109,7 +103,7 @@ Windower4/addons/GearSwap/data/
 
 ## 免責事項
 
-本スクリプトは、装備を着替える GearSwap のジョブファイルですが、本体の自動 WS を ON にすると、戦闘中に TP が 1000 以上になったとき、ウェポンスキルを自動で入力します（初期値は OFF）。
+本スクリプトは、装備を着替える GearSwap のジョブファイルです。ウェポンスキルや魔法を自動で入力する機能はありません。
 
 FFXI の利用規約では、外部ツールの利用が禁止されています。Windower と GearSwap も、これに当たる可能性があります。処分を受ける可能性があることを理解した上で、自己責任で使ってください。使用によって生じた不利益について、作者は責任を負えません。
 
@@ -124,5 +118,6 @@ FFXI の利用規約では、外部ツールの利用が禁止されています
 
 ## 更新履歴
 
+- **v2.2 (2026-10-23)**: 本体の自動WS（`AutoWS`、`AutoWSName`）を公開版から削除。
 - **v2.1 (2026-10-07)**: 技IDでのストロボ・フラッシュバルブ検出、処理の軽量化、行動中の着替え停止、マニューバをバフIDで判定、本体の自動WS（初期値 OFF）。
 - **v2.0**: ストロボ・フラッシュバルブの事前着替え、マトンTP930でのWS事前着替え、引き戻し中のタイマー維持、10秒の安全ガード。
