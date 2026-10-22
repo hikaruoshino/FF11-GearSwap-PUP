@@ -41,7 +41,7 @@ FF11（ファイナルファンタジーXI）のからくり士（PUP）用 Gear
 | **Windower 4 + GearSwap** | GearSwap は Windower のアドオン一覧から入れられます |
 | **Mote-Include** | GearSwap に最初から入っています（`GearSwap/libs/Mote-Include.lua`） |
 | **日本語クライアント** | アタッチメント名・WS名・装備名は日本語表記です |
-| **ぐりーずさんの `user-globals.lua`（推奨）** | 武器の切り替え（`MainWeapons`）・初期武器・ロックスタイルはこのファイルの仕組みを使います。無くてもマトン用の着替えは動くはずですが、作者の環境では、`user-globals.lua` を入れた状態でしか確認していません |
+| **ぐりーずさんの `user-globals.lua`（推奨）** | 武器の切り替え（`MainWeapons`）・初期武器・ロックスタイルはこのファイルの仕組みを使います。ウェポンスキルごとの装備の割り当て（`init_weapon_skill()`）もこのファイルにあります。無い場合は、その割り当てを飛ばして読み込むので、マトン用の着替えは動きますが、ウェポンスキルの装備は割り当てられません（作者の環境では、`user-globals.lua` を入れた状態でしか確認していません） |
 
 `user-globals.lua` は [ぐりーずさんの GearSwap（ktgreeds/GearSwap）](https://github.com/ktgreeds/GearSwap/tree/main/data) から入手できます。詳しくは [greeds.net の解説](https://greeds.net/gearswap-code-list/) を見てください。
 
@@ -118,6 +118,6 @@ FFXI の利用規約では、外部ツールの利用が禁止されています
 
 ## 更新履歴
 
-- **v2.2 (2026-10-23)**: 本体の自動WS（`AutoWS`、`AutoWSName`）を公開版から削除。
+- **v2.2 (2026-10-23)**: 本体の自動WS（`AutoWS`、`AutoWSName`）を公開版から削除。`user-globals.lua` が無いと `PUP_gear.lua` が読み込めなかった点を修正（無いときは、ウェポンスキルの装備の割り当てを飛ばす）。
 - **v2.1 (2026-10-07)**: 技IDでのストロボ・フラッシュバルブ検出、処理の軽量化、行動中の着替え停止、マニューバをバフIDで判定、本体の自動WS（初期値 OFF）。
 - **v2.0**: ストロボ・フラッシュバルブの事前着替え、マトンTP930でのWS事前着替え、引き戻し中のタイマー維持、10秒の安全ガード。

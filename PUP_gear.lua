@@ -291,6 +291,7 @@ function init_gear_sets()
     }
     
     --共通WS定義読み込み
-    init_weapon_skill()
+    -- user-globals.lua が無いときは、ウェポンスキルごとの装備の割り当てを飛ばす
+    if init_weapon_skill then init_weapon_skill() end
 
 end
