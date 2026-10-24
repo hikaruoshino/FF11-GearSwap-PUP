@@ -122,3 +122,9 @@ FFXI の利用規約では、外部ツールの利用が禁止されています
 - **v2.2 (2026-10-23)**: 本体の自動WS（`AutoWS`、`AutoWSName`）を公開版から削除。`user-globals.lua` が無いと `PUP_gear.lua` が読み込めなかった点を修正（無いときは、ウェポンスキルの装備の割り当てを飛ばす）。
 - **v2.1 (2026-10-07)**: 技IDでのストロボ・フラッシュバルブ検出、処理の軽量化、行動中の着替え停止、マニューバをバフIDで判定、本体の自動WS（初期値 OFF）。
 - **v2.0**: ストロボ・フラッシュバルブの事前着替え、マトンTP930でのWS事前着替え、引き戻し中のタイマー維持、10秒の安全ガード。
+
+## 不具合・動作報告 / Feedback
+
+「動きました」の一言だけでも歓迎です。GitHub のアカウントがあれば、[Issues](../../issues/new/choose) から書き込めます (日本語・英語どちらでも)。
+
+A one-line "it works" is welcome too. With a GitHub account you can post from [Issues](../../issues/new/choose) (Japanese or English).
